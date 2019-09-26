@@ -71,6 +71,10 @@ the chosen version is available, it is assumed that any source is acceptable
 Installation Order
 ++++++++++++++++++
 
+.. note::
+   This section is only about installation order of runtime dependencies, and
+   does not apply to build dependencies (those are specified using PEP 518).
+
 As of v6.1.0, pip installs dependencies before their dependents, i.e. in
 "topological order."  This is the only commitment pip currently makes related
 to order.  While it may be coincidentally true that pip will install things in
@@ -153,6 +157,7 @@ The following options are supported:
   *  :ref:`--no-binary <install_--no-binary>`
   *  :ref:`--only-binary <install_--only-binary>`
   *  :ref:`--require-hashes <--require-hashes>`
+  *  :ref:`--trusted-host <--trusted-host>`
 
 For example, to specify :ref:`--no-index <--no-index>` and two
 :ref:`--find-links <--find-links>` locations:
@@ -239,8 +244,7 @@ pip supports installing from a package index using a :term:`requirement
 specifier <pypug:Requirement Specifier>`. Generally speaking, a requirement
 specifier is composed of a project name followed by optional :term:`version
 specifiers <pypug:Version Specifier>`.  :pep:`508` contains a full specification
-of the format of a requirement (pip does not support the ``url_req`` form
-of specifier at this time).
+of the format of a requirement.
 
 Some examples:
 
@@ -259,6 +263,13 @@ Since version 6.0, pip also supports specifiers containing `environment markers
 
   SomeProject ==5.4 ; python_version < '2.7'
   SomeProject; sys_platform == 'win32'
+
+Since version 19.1, pip also supports `direct references
+<https://www.python.org/dev/peps/pep-0440/#direct-references>`__ like so:
+
+ ::
+
+  SomeProject @ file:///somewhere/...
 
 Environment markers are supported in the command line and in requirements files.
 
@@ -561,7 +572,7 @@ each sdist that wheels are built from and places the resulting wheels inside.
 
 Pip attempts to choose the best wheels from those built in preference to
 building a new wheel. Note that this means when a package has both optional
-C extensions and builds `py` tagged wheels when the C extension can't be built
+C extensions and builds ``py`` tagged wheels when the C extension can't be built
 that pip will not attempt to build a better wheel for Pythons that would have
 supported it, once any generic wheel is built. To correct this, make sure that
 the wheels are built with Python specific tags - e.g. pp on PyPy.
@@ -689,10 +700,21 @@ does not satisfy the ``--require-hashes`` demand that every package have a
 local hash.
 
 
+Local project installs
+++++++++++++++++++++++
+pip supports installing local project in both regular mode and editable mode.
+You can install local projects by specifying the project path to pip::
+
+$ pip install path/to/SomeProject
+
+During regular installation, pip will copy the entire project directory to a temporary location and install from there.
+The exception is that pip will exclude .tox and .nox directories present in the top level of the project from being copied.
+
+
 .. _`editable-installs`:
 
 "Editable" Installs
-+++++++++++++++++++
+~~~~~~~~~~~~~~~~~~~
 
 "Editable" installs are fundamentally `"setuptools develop mode"
 <https://setuptools.readthedocs.io/en/latest/setuptools.html#development-mode>`_
@@ -804,7 +826,7 @@ Options
 Examples
 ********
 
-#. Install `SomePackage` and its dependencies from `PyPI`_ using :ref:`Requirement Specifiers`
+#. Install ``SomePackage`` and its dependencies from `PyPI`_ using :ref:`Requirement Specifiers`
 
     ::
 
@@ -820,7 +842,7 @@ Examples
       $ pip install -r requirements.txt
 
 
-#. Upgrade an already installed `SomePackage` to the latest from PyPI.
+#. Upgrade an already installed ``SomePackage`` to the latest from PyPI.
 
     ::
 
@@ -851,8 +873,8 @@ Examples
 
       $ pip install SomePackage[PDF]
       $ pip install git+https://git.repo/some_pkg.git#egg=SomePackage[PDF]
+      $ pip install .[PDF]  # project in current directory
       $ pip install SomePackage[PDF]==3.0
-      $ pip install -e .[PDF]==3.0  # editable project in current directory
       $ pip install SomePackage[PDF,EPUB]  # multiple extras
 
 
@@ -862,6 +884,14 @@ Examples
 
       $ pip install ./downloads/SomePackage-1.0.4.tar.gz
       $ pip install http://my.package.repo/SomePackage-1.0.4.zip
+
+
+#. Install a particular source archive file following :pep:`440` direct references.
+
+    ::
+
+      $ pip install SomeProject==1.0.4@http://my.package.repo//SomeProject-1.2.3-py33-none-any.whl
+      $ pip install "SomeProject==1.0.4 @ http://my.package.repo//SomeProject-1.2.3-py33-none-any.whl"
 
 
 #. Install from alternative package repositories.

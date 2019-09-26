@@ -7,10 +7,13 @@ import sys
 
 from pip._internal.utils.logging import indent_log
 from pip._internal.utils.misc import (
-    display_path, rmtree, split_auth_from_netloc,
+    display_path,
+    make_command,
+    rmtree,
+    split_auth_from_netloc,
 )
 from pip._internal.utils.typing import MYPY_CHECK_RUNNING
-from pip._internal.vcs import VersionControl, vcs
+from pip._internal.vcs.versioncontrol import VersionControl, vcs
 
 _svn_xml_url_re = re.compile('url="([^"]+)"')
 _svn_rev_re = re.compile(r'committed-rev="(\d+)"')
@@ -19,8 +22,10 @@ _svn_info_xml_url_re = re.compile(r'<url>(.*)</url>')
 
 
 if MYPY_CHECK_RUNNING:
-    from typing import List, Optional, Tuple
-    from pip._internal.vcs import RevOptions
+    from typing import Optional, Tuple
+    from pip._internal.utils.misc import CommandArgs, HiddenText
+    from pip._internal.vcs.versioncontrol import AuthInfo, RevOptions
+
 
 logger = logging.getLogger(__name__)
 
@@ -38,46 +43,6 @@ class Subversion(VersionControl):
     @staticmethod
     def get_base_rev_args(rev):
         return ['-r', rev]
-
-    def export(self, location, url):
-        """Export the svn repository at the url to the destination location"""
-        url, rev_options = self.get_url_rev_options(url)
-
-        logger.info('Exporting svn repository %s to %s', url, location)
-        with indent_log():
-            if os.path.exists(location):
-                # Subversion doesn't like to check out over an existing
-                # directory --force fixes this, but was only added in svn 1.5
-                rmtree(location)
-            cmd_args = (['export'] + self.get_remote_call_options() +
-                        rev_options.to_args() + [url, location])
-            self.run_command(cmd_args, show_stdout=False)
-
-    def fetch_new(self, dest, url, rev_options):
-        # type: (str, str, RevOptions) -> None
-        rev_display = rev_options.to_display()
-        logger.info(
-            'Checking out %s%s to %s',
-            url,
-            rev_display,
-            display_path(dest),
-        )
-        cmd_args = (['checkout', '-q'] +
-                    self.get_remote_call_options() +
-                    rev_options.to_args() + [url, dest])
-        self.run_command(cmd_args)
-
-    def switch(self, dest, url, rev_options):
-        # type: (str, str, RevOptions) -> None
-        cmd_args = (['switch'] + self.get_remote_call_options() +
-                    rev_options.to_args() + [url, dest])
-        self.run_command(cmd_args)
-
-    def update(self, dest, url, rev_options):
-        # type: (str, str, RevOptions) -> None
-        cmd_args = (['update'] + self.get_remote_call_options() +
-                    rev_options.to_args() + [dest])
-        self.run_command(cmd_args)
 
     @classmethod
     def get_revision(cls, location):
@@ -122,6 +87,7 @@ class Subversion(VersionControl):
 
     @classmethod
     def get_url_rev_and_auth(cls, url):
+        # type: (str) -> Tuple[str, Optional[str], AuthInfo]
         # hotfix the URL scheme after removing svn+ from svn+ssh:// readd it
         url, rev, user_pass = super(Subversion, cls).get_url_rev_and_auth(url)
         if url.startswith('ssh://'):
@@ -130,7 +96,8 @@ class Subversion(VersionControl):
 
     @staticmethod
     def make_rev_args(username, password):
-        extra_args = []
+        # type: (Optional[str], Optional[HiddenText]) -> CommandArgs
+        extra_args = []  # type: CommandArgs
         if username:
             extra_args += ['--username', username]
         if password:
@@ -278,7 +245,7 @@ class Subversion(VersionControl):
         return vcs_version
 
     def get_remote_call_options(self):
-        # type: () -> List[str]
+        # type: () -> CommandArgs
         """Return options to be used on calls to Subversion that contact the server.
 
         These options are applicable for the following ``svn`` subcommands used
@@ -286,7 +253,6 @@ class Subversion(VersionControl):
 
             - checkout
             - export
-            - info
             - switch
             - update
 
@@ -310,6 +276,54 @@ class Subversion(VersionControl):
             return ['--force-interactive']
 
         return []
+
+    def export(self, location, url):
+        # type: (str, HiddenText) -> None
+        """Export the svn repository at the url to the destination location"""
+        url, rev_options = self.get_url_rev_options(url)
+
+        logger.info('Exporting svn repository %s to %s', url, location)
+        with indent_log():
+            if os.path.exists(location):
+                # Subversion doesn't like to check out over an existing
+                # directory --force fixes this, but was only added in svn 1.5
+                rmtree(location)
+            cmd_args = make_command(
+                'export', self.get_remote_call_options(),
+                rev_options.to_args(), url, location,
+            )
+            self.run_command(cmd_args, show_stdout=False)
+
+    def fetch_new(self, dest, url, rev_options):
+        # type: (str, HiddenText, RevOptions) -> None
+        rev_display = rev_options.to_display()
+        logger.info(
+            'Checking out %s%s to %s',
+            url,
+            rev_display,
+            display_path(dest),
+        )
+        cmd_args = make_command(
+            'checkout', '-q', self.get_remote_call_options(),
+            rev_options.to_args(), url, dest,
+        )
+        self.run_command(cmd_args)
+
+    def switch(self, dest, url, rev_options):
+        # type: (str, HiddenText, RevOptions) -> None
+        cmd_args = make_command(
+            'switch', self.get_remote_call_options(), rev_options.to_args(),
+            url, dest,
+        )
+        self.run_command(cmd_args)
+
+    def update(self, dest, url, rev_options):
+        # type: (str, HiddenText, RevOptions) -> None
+        cmd_args = make_command(
+            'update', self.get_remote_call_options(), rev_options.to_args(),
+            dest,
+        )
+        self.run_command(cmd_args)
 
 
 vcs.register(Subversion)

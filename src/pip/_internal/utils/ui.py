@@ -1,3 +1,6 @@
+# The following comment should be removed at some point in the future.
+# mypy: strict-optional=False
+
 from __future__ import absolute_import, division
 
 import contextlib
@@ -208,8 +211,8 @@ class DownloadSilentBar(BaseDownloadProgressBar, SilentBar):  # type: ignore
     pass
 
 
-class DownloadIncrementalBar(BaseDownloadProgressBar,  # type: ignore
-                             IncrementalBar):
+class DownloadBar(BaseDownloadProgressBar,  # type: ignore
+                  Bar):
     pass
 
 
@@ -252,7 +255,7 @@ class DownloadProgressSpinner(WindowsMixin, InterruptibleMixin,
 BAR_TYPES = {
     "off": (DownloadSilentBar, DownloadSilentBar),
     "on": (DefaultDownloadProgressBar, DownloadProgressSpinner),
-    "ascii": (DownloadIncrementalBar, DownloadProgressSpinner),
+    "ascii": (DownloadBar, DownloadProgressSpinner),
     "pretty": (DownloadFillingCirclesBar, DownloadProgressSpinner),
     "emoji": (DownloadBlueEmojiProgressBar, DownloadProgressSpinner)
 }

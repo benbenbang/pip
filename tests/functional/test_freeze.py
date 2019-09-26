@@ -7,8 +7,12 @@ from doctest import ELLIPSIS, OutputChecker
 import pytest
 
 from tests.lib import (
-    _create_test_package, _create_test_package_with_srcdir, _git_commit,
-    need_bzr, need_mercurial, path_to_url,
+    _create_test_package,
+    _create_test_package_with_srcdir,
+    _git_commit,
+    need_bzr,
+    need_mercurial,
+    path_to_url,
 )
 
 distribute_re = re.compile('^distribute==[0-9.]+\n', re.MULTILINE)
@@ -51,7 +55,7 @@ def test_basic_freeze(script):
     currently it is not).
 
     """
-    script.scratch_path.join("initools-req.txt").write(textwrap.dedent("""\
+    script.scratch_path.joinpath("initools-req.txt").write_text(textwrap.dedent("""\
         simple==2.0
         # and something else to test out:
         simple2<=3.0
@@ -476,8 +480,8 @@ def test_freeze_with_requirement_option_file_url_egg_not_installed(
     """
 
     url = path_to_url('my-package.tar.gz') + '#egg=Does.Not-Exist'
-    requirements_path = script.scratch_path.join('requirements.txt')
-    requirements_path.write(url + '\n')
+    requirements_path = script.scratch_path.joinpath('requirements.txt')
+    requirements_path.write_text(url + '\n')
 
     result = script.pip(
         'freeze', '--requirement', 'requirements.txt', expect_stderr=True,
@@ -498,7 +502,7 @@ def test_freeze_with_requirement_option(script):
 
     """
 
-    script.scratch_path.join("hint.txt").write(textwrap.dedent("""\
+    script.scratch_path.joinpath("hint.txt").write_text(textwrap.dedent("""\
         INITools==0.1
         NoExist==4.2  # A comment that ensures end of line comments work.
         simple==3.0; python_version > '1.0'
@@ -528,12 +532,12 @@ def test_freeze_with_requirement_option_multiple(script):
     --requirement hints
 
     """
-    script.scratch_path.join('hint1.txt').write(textwrap.dedent("""\
+    script.scratch_path.joinpath('hint1.txt').write_text(textwrap.dedent("""\
         INITools==0.1
         NoExist==4.2
         simple==3.0; python_version > '1.0'
     """) + _freeze_req_opts)
-    script.scratch_path.join('hint2.txt').write(textwrap.dedent("""\
+    script.scratch_path.joinpath('hint2.txt').write_text(textwrap.dedent("""\
         NoExist2==2.0
         simple2==1.0
     """) + _freeze_req_opts)
@@ -576,7 +580,7 @@ def test_freeze_with_requirement_option_package_repeated_one_file(script):
     Test freezing with single requirements file that contains a package
     multiple times
     """
-    script.scratch_path.join('hint1.txt').write(textwrap.dedent("""\
+    script.scratch_path.joinpath('hint1.txt').write_text(textwrap.dedent("""\
         simple2
         simple2
         NoExist
@@ -609,10 +613,10 @@ def test_freeze_with_requirement_option_package_repeated_multi_file(script):
     """
     Test freezing with multiple requirements file that contain a package
     """
-    script.scratch_path.join('hint1.txt').write(textwrap.dedent("""\
+    script.scratch_path.joinpath('hint1.txt').write_text(textwrap.dedent("""\
         simple
     """) + _freeze_req_opts)
-    script.scratch_path.join('hint2.txt').write(textwrap.dedent("""\
+    script.scratch_path.joinpath('hint2.txt').write_text(textwrap.dedent("""\
         simple
         NoExist
     """) + _freeze_req_opts)

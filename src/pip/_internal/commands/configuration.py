@@ -4,11 +4,15 @@ import subprocess
 
 from pip._internal.cli.base_command import Command
 from pip._internal.cli.status_codes import ERROR, SUCCESS
-from pip._internal.configuration import Configuration, kinds
+from pip._internal.configuration import (
+    Configuration,
+    get_configuration_files,
+    kinds,
+)
 from pip._internal.exceptions import PipError
-from pip._internal.locations import running_under_virtualenv, site_config_file
 from pip._internal.utils.deprecation import deprecated
-from pip._internal.utils.misc import get_prog
+from pip._internal.utils.misc import get_prog, write_output
+from pip._internal.utils.virtualenv import running_under_virtualenv
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +34,7 @@ class ConfigurationCommand(Command):
         default.
     """
 
-    name = 'config'
+    ignore_require_venv = True
     usage = """
         %prog [<file-option>] list
         %prog [<file-option>] [--editor <editor-path>] edit
@@ -39,8 +43,6 @@ class ConfigurationCommand(Command):
         %prog [<file-option>] set name value
         %prog [<file-option>] unset name
     """
-
-    summary = "Manage local and global configuration."
 
     def __init__(self, *args, **kwargs):
         super(ConfigurationCommand, self).__init__(*args, **kwargs)
@@ -164,7 +166,10 @@ class ConfigurationCommand(Command):
             if not need_value:
                 return None
             # Default to user, unless there's a site file.
-            elif os.path.exists(site_config_file):
+            elif any(
+                os.path.exists(site_config_file)
+                for site_config_file in get_configuration_files()[kinds.SITE]
+            ):
                 return kinds.SITE
             else:
                 return kinds.USER
@@ -180,13 +185,13 @@ class ConfigurationCommand(Command):
         self._get_n_args(args, "list", n=0)
 
         for key, value in sorted(self.configuration.items()):
-            logger.info("%s=%r", key, value)
+            write_output("%s=%r", key, value)
 
     def get_name(self, options, args):
         key = self._get_n_args(args, "get [name]", n=1)
         value = self.configuration.get_value(key)
 
-        logger.info("%s", value)
+        write_output("%s", value)
 
     def set_name_value(self, options, args):
         key, value = self._get_n_args(args, "set [name] [value]", n=2)

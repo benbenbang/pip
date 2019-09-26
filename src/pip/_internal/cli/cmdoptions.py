@@ -5,20 +5,26 @@ The principle here is to define options once, but *not* instantiate them
 globally. One reason being that options with action='append' can carry state
 between parses. pip parses general options twice internally, and shouldn't
 pass on state. To be consistent, all options will follow this design.
-
 """
+
+# The following comment should be removed at some point in the future.
+# mypy: strict-optional=False
+
 from __future__ import absolute_import
 
+import logging
 import textwrap
 import warnings
 from distutils.util import strtobool
 from functools import partial
 from optparse import SUPPRESS_HELP, Option, OptionGroup
+from textwrap import dedent
 
 from pip._internal.exceptions import CommandError
-from pip._internal.locations import USER_CACHE_DIR, src_prefix
+from pip._internal.locations import USER_CACHE_DIR, get_src_prefix
 from pip._internal.models.format_control import FormatControl
 from pip._internal.models.index import PyPI
+from pip._internal.models.target_python import TargetPython
 from pip._internal.utils.hashes import STRONG_HASHES
 from pip._internal.utils.typing import MYPY_CHECK_RUNNING
 from pip._internal.utils.ui import BAR_TYPES
@@ -27,6 +33,8 @@ if MYPY_CHECK_RUNNING:
     from typing import Any, Callable, Dict, Optional, Tuple
     from optparse import OptionParser, Values
     from pip._internal.cli.parser import ConfigOptionParser
+
+logger = logging.getLogger(__name__)
 
 
 def raise_option_error(parser, option, msg):
@@ -357,8 +365,8 @@ def trusted_host():
         action="append",
         metavar="HOSTNAME",
         default=[],
-        help="Mark this host as trusted, even though it does not have valid "
-             "or any HTTPS.",
+        help="Mark this host or host:port pair as trusted, even though it "
+             "does not have valid or any HTTPS.",
     )
 
 
@@ -406,7 +414,7 @@ src = partial(
     '--src', '--source', '--source-dir', '--source-directory',
     dest='src_dir',
     metavar='dir',
-    default=src_prefix,
+    default=get_src_prefix(),
     help='Directory to check out editable projects into. '
     'The default in a virtualenv is "<venv path>/src". '
     'The default for global installs is "<current dir>/src".'
@@ -480,24 +488,49 @@ platform = partial(
 
 # This was made a separate function for unit-testing purposes.
 def _convert_python_version(value):
-    # type: (str) -> Tuple[int, ...]
+    # type: (str) -> Tuple[Tuple[int, ...], Optional[str]]
     """
-    Convert a string like "3" or "34" into a tuple of ints.
-    """
-    if len(value) == 1:
-        parts = [value]
-    else:
-        parts = [value[0], value[1:]]
+    Convert a version string like "3", "37", or "3.7.3" into a tuple of ints.
 
-    return tuple(int(part) for part in parts)
+    :return: A 2-tuple (version_info, error_msg), where `error_msg` is
+        non-None if and only if there was a parsing error.
+    """
+    if not value:
+        # The empty string is the same as not providing a value.
+        return (None, None)
+
+    parts = value.split('.')
+    if len(parts) > 3:
+        return ((), 'at most three version parts are allowed')
+
+    if len(parts) == 1:
+        # Then we are in the case of "3" or "37".
+        value = parts[0]
+        if len(value) > 1:
+            parts = [value[0], value[1:]]
+
+    try:
+        version_info = tuple(int(part) for part in parts)
+    except ValueError:
+        return ((), 'each version part must be an integer')
+
+    return (version_info, None)
 
 
 def _handle_python_version(option, opt_str, value, parser):
     # type: (Option, str, str, OptionParser) -> None
     """
-    Convert a string like "3" or "34" into a tuple of ints.
+    Handle a provided --python-version value.
     """
-    version_info = _convert_python_version(value)
+    version_info, error_msg = _convert_python_version(value)
+    if error_msg is not None:
+        msg = (
+            'invalid --python-version value: {!r}: {}'.format(
+                value, error_msg,
+            )
+        )
+        raise_option_error(parser, option=option, msg=msg)
+
     parser.values.python_version = version_info
 
 
@@ -509,12 +542,13 @@ python_version = partial(
     action='callback',
     callback=_handle_python_version, type='str',
     default=None,
-    help=("Only use wheels compatible with Python "
-          "interpreter version <version>. If not specified, then the "
-          "current system interpreter minor version is used. A major "
-          "version (e.g. '2') can be specified to match all "
-          "minor revs of that major version.  A minor version "
-          "(e.g. '34') can also be specified."),
+    help=dedent("""\
+    The Python interpreter version to use for wheel and "Requires-Python"
+    compatibility checks. Defaults to a version derived from the running
+    interpreter. The version can be specified using up to three dot-separated
+    integers (e.g. "3" for 3.0.0, "3.7" for 3.7.0, or "3.7.3"). A major-minor
+    version can also be given as a string without dots (e.g. "37" for 3.7.0).
+    """),
 )  # type: Callable[..., Option]
 
 
@@ -545,6 +579,26 @@ abi = partial(
           "--platform, and --python-version when using "
           "this option."),
 )  # type: Callable[..., Option]
+
+
+def add_target_python_options(cmd_opts):
+    # type: (OptionGroup) -> None
+    cmd_opts.add_option(platform())
+    cmd_opts.add_option(python_version())
+    cmd_opts.add_option(implementation())
+    cmd_opts.add_option(abi())
+
+
+def make_target_python(options):
+    # type: (Values) -> TargetPython
+    target_python = TargetPython(
+        platform=options.platform,
+        py_version_info=options.python_version,
+        abi=options.abi,
+        implementation=options.implementation,
+    )
+
+    return target_python
 
 
 def prefer_binary():
@@ -793,6 +847,24 @@ require_hashes = partial(
          'repeatable installs. This option is implied when any package in a '
          'requirements file has a --hash option.',
 )  # type: Callable[..., Option]
+
+
+list_path = partial(
+    Option,
+    '--path',
+    dest='path',
+    action='append',
+    help='Restrict to the specified installation path for listing '
+         'packages (can be used multiple times).'
+)  # type: Callable[..., Option]
+
+
+def check_list_path_option(options):
+    # type: (Values) -> None
+    if options.path and (options.user or options.local):
+        raise CommandError(
+            "Cannot combine '--path' with '--user' or '--local'"
+        )
 
 
 ##########
